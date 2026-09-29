@@ -1,0 +1,21 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dawat Dost – Delivery</title><link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="config.js"></script></head>
+<body><header><h1>Dawat Dost · Delivery</h1><button class="y" id="out" style="display:none" onclick="SB.auth.signOut().then(()=>location.reload())">Sign out</button></header>
+<main id="app"><div class="card col"><label>Email<input id="em" type="email"></label><label>Password<input id="pw" type="password"></label><div class="msg" id="err"></div><button onclick="login()">Sign in</button></div></main>
+<script>
+let me;
+async function login(){const{error}=await SB.auth.signInWithPassword({email:em.value,password:pw.value});if(error)err.textContent='Wrong email or password.';else start()}
+async function start(){const{data:{session}}=await SB.auth.getSession();if(!session)return;me=session.user.id;
+ const{data}=await SB.from('staff').select('role').eq('user_id',me).maybeSingle();
+ if(data?.role!=='delivery'){await SB.auth.signOut();err&&(err.textContent='This account is not a delivery account.');return}
+ out.style.display='';load()}
+async function load(){const{data}=await SB.from('orders').select('*').order('id');
+ const mine=data.filter(o=>o.delivery_boy===me&&o.status==='picked_up'),ready=data.filter(o=>o.status==='ready');
+ const c=(o,btn)=>`<div class="card col"><b>#${o.id} · ${esc(o.customer_name)}</b><br><a href="tel:${esc(o.phone)}">${esc(o.phone)}</a><br>${esc(o.address)}<br>
+ <a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.address)}">Open in Maps</a><br>${o.items.map(i=>`${i.q} × ${esc(i.n)}`).join(', ')}<br><b class="price">${o.payment_method==='upi'&&o.payment_status==='paid'?'Paid online':'Collect ₹'+o.total}</b><br>${btn}</div>`;
+ app.innerHTML=`<button class="alt" onclick="load()">Refresh</button><h2>My deliveries</h2>`+(mine.map(o=>c(o,`<button onclick="upd(${o.id},'delivered')">Mark delivered</button>`)).join('')||'<p>No active deliveries.</p>')+
+ `<h2>Ready for pickup</h2>`+(ready.map(o=>c(o,`<button onclick="upd(${o.id},'picked_up')">Accept order</button>`)).join('')||'<p>No orders waiting.</p>')}
+async function upd(id,s){const{error}=await SB.from('orders').update({status:s,delivery_boy:me}).eq('id',id);if(error)alert('Someone else may have taken this order.');load()}
+start();setInterval(()=>{if(me)load()},15000);
+</script></body></html>

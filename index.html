@@ -1,0 +1,60 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dawat Dost – Order Food</title><link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="config.js"></script>
+<style>
+.top{position:sticky;top:0;z-index:5;background:var(--g);padding:10px 14px;border-bottom:5px solid var(--y)}
+.top .r{display:flex;justify-content:space-between;align-items:center;color:#fff;gap:8px}.top input{margin:8px 0 0}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:4px 0}.chips button{flex:none;background:transparent;color:var(--ink);border:2px solid var(--g)}.chips button.on{background:var(--g);color:#fff}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.pc{background:var(--c);border:1px solid var(--l);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.pc .im{height:130px;background:var(--l) center/cover;display:grid;place-items:center;font-size:2.6rem}
+.pc .b{padding:10px;display:flex;flex-direction:column;gap:4px;flex:1}.pc .f{margin-top:auto;display:flex;justify-content:space-between;align-items:center}
+.dot{display:inline-block;width:14px;height:14px;border:2px solid;padding:2px;margin-right:6px;vertical-align:-2px}.dot i{display:block;width:100%;height:100%;border-radius:50%}
+.v{color:#1a8f3c}.v i{background:#1a8f3c}.nv{color:#b3261e}.nv i{background:#b3261e}
+.steps{display:flex;justify-content:space-between;margin:14px 0;font-size:.75rem;text-align:center}.steps div{flex:1;opacity:.4}.steps div.on{opacity:1;font-weight:800;color:var(--g)}
+.steps b{display:block;width:26px;height:26px;line-height:26px;margin:0 auto 4px;border-radius:50%;background:var(--l)}.steps .on b{background:var(--g);color:#fff}
+dialog{max-width:460px;width:94%;border-radius:14px;border:0;background:var(--c);color:var(--ink)}
+</style></head><body>
+<div class="top"><div class="r"><h1>Dawat Dost</h1><div><button class="y" onclick="openTrack()">Track order</button> <a href="tel:9492148648" style="color:#fff">Call</a></div></div>
+<input id="q" placeholder="Search dishes" oninput="draw()"></div>
+<main><div class="chips" id="chips"></div><label><input type="checkbox" id="veg" style="width:auto" onchange="draw()"> Veg only</label><div class="grid" id="menu"><p>Loading menu…</p></div></main>
+<div class="bar" id="bar"><span id="bt"></span><button class="y" onclick="openCo()">View cart</button></div>
+
+<dialog id="dlg"><h2 style="margin:0">Your cart</h2><div id="lines"></div>
+<label>Name<input id="nm" autocomplete="name"></label><label>Phone<input id="ph" type="tel" maxlength="10" autocomplete="tel"></label><label>Delivery address<textarea id="ad" rows="2"></textarea></label><label>Payment<select id="pm"><option value="cod">Cash on delivery</option><option value="upi">UPI</option></select></label>
+<div class="msg" id="err"></div><div class="tabs"><button class="alt" onclick="dlg.close()">Back</button><button id="go" onclick="place()">Place order</button></div></dialog>
+
+<dialog id="trk"><h2 style="margin:0">Track order</h2><div id="tl"></div>
+<label>Order number<input id="tid" inputmode="numeric"></label><label>Phone used<input id="tph" type="tel" maxlength="10"></label>
+<div class="msg" id="te"></div><div class="tabs"><button class="alt" onclick="trk.close()">Close</button><button onclick="track()">Check status</button></div><div id="tr"></div></dialog>
+<script>
+const FEE=30,ST=[['new','Placed'],['preparing','Preparing'],['ready','Ready'],['picked_up','On the way'],['delivered','Delivered']];
+let P=[],cat='All',cart=JSON.parse(localStorage.getItem('dd_cart')||'{}'),poll;
+(async()=>{const{data,error}=await SB.from('products').select('*').eq('active',true).order('category').order('id');
+ if(error){menu.innerHTML='<p class="msg">Could not load the menu. Please try again.</p>';return}
+ P=data;cart=Object.fromEntries(Object.entries(cart).filter(([k])=>P.some(p=>p.id==k)));
+ chips.innerHTML=['All',...new Set(P.map(p=>p.category))].map(c=>`<button class="${c==='All'?'on':''}" onclick="cat='${esc(c)}';document.querySelectorAll('.chips button').forEach(b=>b.classList.toggle('on',b.textContent===cat));draw()">${esc(c)}</button>`).join('');draw()})();
+function draw(){const s=q.value.toLowerCase();const L=P.filter(p=>(cat==='All'||p.category===cat)&&(!veg.checked||p.is_veg)&&(p.name+(p.description||'')).toLowerCase().includes(s));
+ menu.innerHTML=L.map(p=>{const n=cart[p.id]||0;return `<div class="pc"><div class="im" ${p.image_url?`style="background-image:url('${esc(p.image_url)}')"`:''}>${p.image_url?'':'🍽️'}</div><div class="b">
+ <div><span class="dot ${p.is_veg?'v':'nv'}"><i></i></span><b>${esc(p.name)}</b></div><small>${esc(p.description)}</small>
+ <div class="f"><span class="price">₹${p.price}</span>${n?`<span><button onclick="ch(${p.id},-1)">−</button> <b>${n}</b> <button onclick="ch(${p.id},1)">+</button></span>`:`<button onclick="ch(${p.id},1)">Add</button>`}</div></div></div>`}).join('')||'<p>No dishes match your search.</p>';bar()}
+function ch(id,d){cart[id]=Math.max(0,(cart[id]||0)+d);if(!cart[id])delete cart[id];localStorage.setItem('dd_cart',JSON.stringify(cart));draw()}
+const sub=()=>P.reduce((s,p)=>s+(cart[p.id]||0)*p.price,0),cnt=()=>Object.values(cart).reduce((a,b)=>a+b,0);
+function bar(){document.getElementById('bar').classList.toggle('on',cnt()>0);bt.textContent=`${cnt()} items · ₹${sub()}`}
+function openCo(){lines.innerHTML=P.filter(p=>cart[p.id]).map(p=>`<div class="card"><span>${esc(p.name)}</span><span><button onclick="ch(${p.id},-1);openCo()">−</button> ${cart[p.id]} <button onclick="ch(${p.id},1);openCo()">+</button> ₹${cart[p.id]*p.price}</span></div>`).join('')+`<p>Delivery ₹${FEE}<br><b>Total ₹${sub()+FEE}</b></p>`;if(!cnt()){dlg.close();return}dlg.showModal()}
+async function place(){const n=nm.value.trim(),p=ph.value.trim(),a=ad.value.trim();
+ if(!n||!/^[6-9]\d{9}$/.test(p)||!a){err.textContent='Enter your name, a 10-digit phone number and your address.';return}
+ go.disabled=true;const{data,error}=await SB.rpc('place_order',{p_name:n,p_phone:p,p_address:a,p_items:Object.entries(cart).map(([id,q])=>({id:+id,q})),p_method:pm.value});go.disabled=false;
+ if(error){err.textContent='Order failed. Please try again or call 94921 48648.';return}
+ cart={};localStorage.setItem('dd_cart','{}');dlg.close();draw();tid.value=data;tph.value=p;openTrack();track()}
+function openTrack(){trk.showModal()}
+async function track(){clearInterval(poll);const{data,error}=await SB.rpc('track_order',{p_id:+tid.value,p_phone:tph.value.trim()});
+ if(error||!data?.length){te.textContent='No order found. Check the number and phone.';tr.innerHTML='';return}te.textContent='';const o=data[0];
+ const i=ST.findIndex(s=>s[0]===o.status);
+ tr.innerHTML=o.status==='cancelled'?'<p class="msg"><b>This order was cancelled.</b></p>':`<div class="steps">${ST.map((s,k)=>`<div class="${k<=i?'on':''}"><b>${k+1}</b>${s[1]}</div>`).join('')}</div>`+o.items.map(x=>`<div>${x.q} × ${esc(x.n)}</div>`).join('')+`<p><b>Total ₹${o.total}</b></p>`+payBox(o);
+ if(!['delivered','cancelled'].includes(o.status))poll=setInterval(track,10000)}
+function payBox(o){if(o.payment_method==='cod')return '<p>Pay cash on delivery.</p>';
+ if(o.payment_status==='paid')return '<p><b>Payment received ✓</b></p>';
+ return `<a href="upi://pay?pa=${encodeURIComponent(UPI_ID)}&pn=Dawat%20Dost&am=${o.total}&cu=INR&tn=Order%20${+tid.value}" style="display:block;text-align:center;background:var(--y);color:#111;padding:12px;border-radius:8px;text-decoration:none">Pay ₹${o.total} with UPI</a><small>We confirm your payment after we receive it.</small>`}
+trk.addEventListener('close',()=>clearInterval(poll));
+</script></body></html>

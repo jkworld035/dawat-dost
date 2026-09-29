@@ -1,0 +1,31 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dawat Dost – Admin</title><link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="config.js"></script></head>
+<body><header><h1>Dawat Dost · Admin</h1><button class="y" id="out" style="display:none" onclick="SB.auth.signOut().then(()=>location.reload())">Sign out</button></header>
+<main id="app"><div class="card col"><label>Email<input id="em" type="email"></label><label>Password<input id="pw" type="password"></label><div class="msg" id="err"></div><button onclick="login()">Sign in</button></div></main>
+<script>
+async function login(){const{error}=await SB.auth.signInWithPassword({email:em.value,password:pw.value});if(error)err.textContent='Wrong email or password.';else start()}
+async function start(){const{data:{session}}=await SB.auth.getSession();if(!session)return;
+ const{data}=await SB.from('staff').select('role').eq('user_id',session.user.id).maybeSingle();
+ if(data?.role!=='admin'){await SB.auth.signOut();err&&(err.textContent='This account is not an admin.');return}
+ out.style.display='';app.innerHTML=`<div class="tabs"><button onclick="tab('p')">Products</button><button onclick="tab('o')">Orders</button></div><div id="v" style="display:grid;gap:10px"></div>`;tab('o')}
+let T='o';function tab(t){T=t;t==='p'?prods():orders()}
+async function prods(){const{data}=await SB.from('products').select('*').order('id');
+ v.innerHTML=`<div class="card col"><b id="ft">Add product</b><input type="hidden" id="pid"><input id="pn" placeholder="Name"><input id="pd" placeholder="Description"><input id="pc" placeholder="Category"><input id="pi" placeholder="Image URL (optional)"><label><input type="checkbox" id="pv" style="width:auto"> Vegetarian</label><input id="pp" type="number" placeholder="Price ₹"><div class="msg" id="pe"></div><button onclick="save()">Save product</button></div>`+
+ data.map(p=>`<div class="card"><div><b>${esc(p.name)}</b> ${p.active?'':'<span class="tag">Hidden</span>'}<br><small>${esc(p.category)}</small> <span class="price">₹${p.price}</span></div><div>
+ <button class="alt" onclick='edit(${JSON.stringify(p).replace(/'/g,"&#39;")})'>Edit</button> <button class="alt" onclick="tog(${p.id},${!p.active})">${p.active?'Hide':'Show'}</button> <button class="red" onclick="del(${p.id})">Delete</button></div></div>`).join('')}
+function edit(p){pid.value=p.id;pn.value=p.name;pd.value=p.description||'';pc.value=p.category||'';pi.value=p.image_url||'';pv.checked=!!p.is_veg;pp.value=p.price;ft.textContent='Edit product';scrollTo(0,0)}
+async function save(){if(!pn.value.trim()||!pp.value){pe.textContent='Name and price are required.';return}
+ const r={name:pn.value.trim(),description:pd.value,category:pc.value||'General',price:+pp.value,is_veg:pv.checked,image_url:pi.value||null};if(pid.value)r.id=+pid.value;
+ const{error}=await SB.from('products').upsert(r);if(error)pe.textContent=error.message;else prods()}
+async function tog(id,a){await SB.from('products').update({active:a}).eq('id',id);prods()}
+async function del(id){if(confirm('Delete this product?')){await SB.from('products').delete().eq('id',id);prods()}}
+const NEXT={new:['preparing','Start preparing'],preparing:['ready','Mark ready']};
+async function orders(){const{data}=await SB.from('orders').select('*').order('id',{ascending:false}).limit(50);
+ const td=new Date().toDateString(),t=data.filter(o=>new Date(o.created_at).toDateString()===td&&o.status!=='cancelled');v.innerHTML=`<div class="card"><b>Today: ${t.length} orders · ₹${t.reduce((a,o)=>a+ +o.total,0)}</b><button class="alt" onclick="orders()">Refresh</button></div>`+data.map(o=>`<div class="card col"><b>#${o.id} · ${esc(o.customer_name)}</b> <span class="tag">${o.status}</span><br>
+ <a href="tel:${esc(o.phone)}">${esc(o.phone)}</a> · ${esc(o.address)}<br>${o.items.map(i=>`${i.q} × ${esc(i.n)}`).join(', ')}<br><b class="price">₹${o.total}</b> <span class="tag">${o.payment_method==='upi'?'UPI':'COD'} · ${o.payment_status}</span><br>
+ ${o.payment_status==='pending'&&o.status!=='cancelled'?`<button class="y" onclick="pay(${o.id})">Mark paid</button> `:''}${NEXT[o.status]?`<button onclick="st(${o.id},'${NEXT[o.status][0]}')">${NEXT[o.status][1]}</button> `:''}${['new','preparing','ready'].includes(o.status)?`<button class="red" onclick="st(${o.id},'cancelled')">Cancel</button>`:''}</div>`).join('')}
+async function pay(id){await SB.from('orders').update({payment_status:'paid'}).eq('id',id);orders()}
+async function st(id,s){await SB.from('orders').update({status:s}).eq('id',id);orders()}
+start();setInterval(()=>{if(T==='o'&&document.getElementById('v'))orders()},20000);
+</script></body></html>
